@@ -11,7 +11,7 @@ interface GDM3SETUP : Object {
     public abstract void StopDaemon () throws IOError;
 }
 
-class WallpaperChooserButton : Gtk.Button {
+class ImageChooserButton : Gtk.Button {
     private Label label;
     private Image image;
     private Separator separator;
@@ -22,7 +22,7 @@ class WallpaperChooserButton : Gtk.Button {
 
     public signal void file_changed ();
 
-    public WallpaperChooserButton() {
+    construct {
         this.box = new Gtk.HBox(false,0);
         this.add(this.box);
         this.label = new Label(_("(None)"));
@@ -54,36 +54,47 @@ class WallpaperChooserButton : Gtk.Button {
     }
 
     void _Clicked() {
-        this.fileChooserDialog = new FileChooserDialog(_("Select a File"),null,
-                                      FileChooserAction.OPEN,
-                                      Stock.CANCEL, ResponseType.CANCEL,
-                                      Stock.CLEAR, ResponseType.NONE,
-                                      Stock.OPEN, ResponseType.ACCEPT);
-        this.fileChooserDialog.add_filter(filter);
-        this.fileChooserDialog.set_filename(this.Filename);
-        this.fileChooserDialog.add_shortcut_folder("/usr/share/backgrounds");
-        int result = fileChooserDialog.run();
-        if (result==ResponseType.ACCEPT) {
-            this.Filename = fileChooserDialog.get_filename();
+        if (this.fileChooserDialog == null) {
+            this.fileChooserDialog = new Gtk.FileChooserDialog(_("Select a File"),null,
+                                          FileChooserAction.OPEN,
+                                          Stock.CANCEL, ResponseType.CANCEL,
+                                          Stock.CLEAR, ResponseType.NONE,
+                                          Stock.OPEN, ResponseType.ACCEPT);
+            this.fileChooserDialog.add_filter(filter);
+            this.fileChooserDialog.set_filename(this.Filename);
+            this.fileChooserDialog.add_shortcut_folder("/usr/share/backgrounds");
+            this.fileChooserDialog.response.connect(this.response_cb);
+            this.fileChooserDialog.destroy.connect(this.dialog_destroy);
+            this.fileChooserDialog.set_transient_for((Window)this.get_toplevel());
+        }
+        this.fileChooserDialog.present();
+    }
+
+    void response_cb(int response_id) {
+        this.fileChooserDialog.hide();
+        if (response_id == Gtk.ResponseType.ACCEPT) {
+            this.Filename = this.fileChooserDialog.get_filename();
             this.label.set_label(GLib.Path.get_basename(this.Filename));
-            fileChooserDialog.destroy();
             this.file_changed();
         }
-        else
-            if (result==ResponseType.NONE) {
+        else {
+            if (response_id == Gtk.ResponseType.NONE) {
                 this.Filename = "";
                 this.label.set_label(_("(None)"));
-                fileChooserDialog.destroy();
                 this.file_changed();
             }
-            else 
-                fileChooserDialog.destroy();
+        }
+    }
+
+    void dialog_destroy() {
+        this.fileChooserDialog = null;
     }
 }
 
 
-class AutoLoginWindow : Gtk.Window {
-    private Gtk.VBox VBoxMain;
+class AutoLoginDialog : Gtk.Dialog {
+    private Gtk.Box content_area;
+    private Gtk.Box Box;
     public Gtk.CheckButton CheckButton_AutoLogin;
     private Gtk.HBox HBox_username;
     private Gtk.Label Label_username;
@@ -91,38 +102,31 @@ class AutoLoginWindow : Gtk.Window {
     private Gtk.HBox HBox_Delay ;
     public Gtk.CheckButton CheckButton_Delay;
     public Gtk.SpinButton SpinButton_Delay;
-    private Gtk.HBox HBox_Apply;
-    private Gtk.Button BTN_Apply;
 
-    public signal void changed ();
-    
-    public AutoLoginWindow(Gtk.Window parent_window) {
-        this.title = _("GDM AutoLogin Setup");
-        this.border_width = 10;
-        this.window_position = WindowPosition.CENTER_ON_PARENT;
-        this.set_modal(true);
-        this.set_transient_for(parent_window);
-        this.set_default_size (400, 300);
+    construct {
         this.set_resizable(false);
-        this.set_icon_name("preferences-desktop-theme");
-        this.delete_event.connect(this._Close);
-        this.VBoxMain = new Gtk.VBox (false, 8);
-        this.add(this.VBoxMain);
+        this.title = _("GDM AutoLogin Setup");
+        this.add_button(Gtk.STOCK_CANCEL,Gtk.ResponseType.CANCEL);
+        this.add_button(Gtk.STOCK_OK,Gtk.ResponseType.OK);
+        this.content_area = (Gtk.Box)this.get_content_area();
+        this.Box = new Gtk.Box(Gtk.Orientation.VERTICAL,8);
+        this.Box.set_border_width(8);
+        this.content_area.add(this.Box);
+
         this.CheckButton_AutoLogin = new Gtk.CheckButton.with_label(_("Enable Automatic Login"));
         this.CheckButton_AutoLogin.toggled.connect(this.AutoLogin_toggled);
-        this.VBoxMain.pack_start(this.CheckButton_AutoLogin, false, false, 0);
+        this.Box.pack_start(this.CheckButton_AutoLogin, false, false, 0);
         this.HBox_username = new Gtk.HBox(false, 0);
         this.HBox_username.set_sensitive(false);
-        this.VBoxMain.pack_start(this.HBox_username, false, false, 0);
+        this.Box.pack_start(this.HBox_username, false, false, 0);
         this.Label_username = new Gtk.Label(_("User Name"));
         this.Label_username.set_alignment(0,0.5f);
         this.HBox_username.pack_start(this.Label_username, false, false, 0);
         this.Entry_username = new Gtk.Entry();
-        this.Entry_username.changed.connect(this.username_changed);
         this.HBox_username.pack_end(this.Entry_username, false, false, 0);
         this.HBox_Delay = new Gtk.HBox(false, 8);
         this.HBox_Delay.set_sensitive(false);
-        this.VBoxMain.pack_start(this.HBox_Delay, false, false, 0);
+        this.Box.pack_start(this.HBox_Delay, false, false, 0);
         this.CheckButton_Delay = new Gtk.CheckButton.with_label(_("Enable Delay before autologin"));
         this.CheckButton_Delay.toggled.connect(this.Delay_toggled);
         this.HBox_Delay.pack_start(CheckButton_Delay, false, false, 0);
@@ -130,16 +134,7 @@ class AutoLoginWindow : Gtk.Window {
         this.SpinButton_Delay.set_value(10);
         this.SpinButton_Delay.set_sensitive(false);
         this.HBox_Delay.pack_end(SpinButton_Delay, false, false, 0);
-        this.HBox_Apply = new Gtk.HBox(false, 0);
-        this.VBoxMain.pack_end(HBox_Apply, false, false, 0);
-        this.BTN_Apply = new Gtk.Button.with_label(_("Apply"));
-        this.BTN_Apply.clicked.connect(this.Apply_clicked);
-        this.HBox_Apply.pack_start(BTN_Apply, true, false, 0);
-    }
-
-    bool _Close(Gdk.EventAny event) {
-        this.hide();
-        return true;
+        this.show_all();
     }
 
     void AutoLogin_toggled() {
@@ -151,18 +146,6 @@ class AutoLoginWindow : Gtk.Window {
             this.HBox_username.set_sensitive(false);
             this.HBox_Delay.set_sensitive(false);
         }
-
-        if (this.Entry_username.get_text()!="" || this.CheckButton_AutoLogin.get_active()==false )
-            this.HBox_Apply.set_sensitive(true);
-        else
-            this.HBox_Apply.set_sensitive(false);
-    }
-
-    void username_changed() {
-        if (Entry_username.get_text()!="")
-            HBox_Apply.set_sensitive(true);
-        else
-            HBox_Apply.set_sensitive(false);
     }
 
     void Delay_toggled() {
@@ -171,12 +154,6 @@ class AutoLoginWindow : Gtk.Window {
         else
             SpinButton_Delay.set_sensitive(false);
     }
-
-    void Apply_clicked() {
-        this.changed();
-        this.hide();
-    }
-
 
 }
 
@@ -191,11 +168,11 @@ class AutologinButton : Gtk.Button {
     private Gtk.Label label_user;
     private Gtk.Separator separator;
     private Gtk.Label label_time;
-    private AutoLoginWindow window;
+    private AutoLoginDialog Dialog;
 
     public signal void changed ();
 
-    public AutologinButton(Gtk.Window parent_window) {
+    construct {
         this.autologin=false;
         this.username="";
         this.timed=false;
@@ -216,8 +193,7 @@ class AutologinButton : Gtk.Button {
         this.separator.set_no_show_all(true);
         this.box.pack_end(this.separator,false,false,2);
         this.clicked.connect(this._clicked);
-        this.window = new AutoLoginWindow(parent_window);
-        this.window.changed.connect(this._changed);
+        this.Dialog = null;
     }
 
     public void  update() {
@@ -280,68 +256,63 @@ class AutologinButton : Gtk.Button {
     }
 
     private void _clicked() {
-        this.window.CheckButton_AutoLogin.set_active(this.get_autologin());
-        this.window.Entry_username.set_text(this.get_username());
-        this.window.CheckButton_Delay.set_active(this.get_timed());
-        this.window.SpinButton_Delay.set_value(this.get_time());
-        this.window.show_all();
+        if (this.Dialog == null) {
+            this.Dialog = new AutoLoginDialog();
+            this.Dialog.response.connect(this.response_cb);
+            this.Dialog.destroy.connect(this.dialog_destroy);
+            this.Dialog.set_transient_for((Gtk.Window)this.get_toplevel());
+        }
+        this.Dialog.CheckButton_AutoLogin.set_active(this.get_autologin());
+        this.Dialog.Entry_username.set_text(this.get_username());
+        this.Dialog.CheckButton_Delay.set_active(this.get_timed());
+        this.Dialog.SpinButton_Delay.set_value(this.get_time());
+        this.Dialog.present();
     }
 
-    private void _changed() {
-        this.set_autologin(this.window.CheckButton_AutoLogin.get_active());
-        this.set_username(this.window.Entry_username.get_text());
-        this.set_timed(this.window.CheckButton_Delay.get_active());
-        this.set_time(this.window.SpinButton_Delay.get_value_as_int());
-        this.changed();
+    private void response_cb(int response_id) {
+        if (response_id == Gtk.ResponseType.OK) {
+            if (this.Dialog.CheckButton_AutoLogin.get_active() && this.Dialog.Entry_username.get_text()=="") {
+                Gtk.MessageDialog Message = new Gtk.MessageDialog((Gtk.Window)this.get_toplevel(),Gtk.DialogFlags.DESTROY_WITH_PARENT, 
+                                        Gtk.MessageType.ERROR,
+                                        Gtk.ButtonsType.CLOSE,
+                                        _("User Name can't be empty !"));
+                Message.run();
+                Message.destroy();
+            }
+            else {
+                this.set_autologin(this.Dialog.CheckButton_AutoLogin.get_active());
+                this.set_username(this.Dialog.Entry_username.get_text());
+                this.set_timed(this.Dialog.CheckButton_Delay.get_active());
+                this.set_time(this.Dialog.SpinButton_Delay.get_value_as_int());
+                this.Dialog.hide();
+                this.changed();
+            }
+        }
+        else
+            this.Dialog.hide();
     }
+
+    private void dialog_destroy() {
+        this.Dialog = null;
+    }
+
 }
 
 class MainWindow : Gtk.Window {
-    private Gtk.VBox VBox_Main;
-    private Gtk.Notebook notebook;
-    private Gtk.VBox Box_common;
-    private Gtk.HBox Box_common_main;
-    private Gtk.VBox Box_common_Left;
-    private Gtk.VBox Box_common_Right;
-    private Gtk.VBox Box_shell;
-    private Gtk.HBox Box_shell_main;
-    private Gtk.VBox Box_shell_Left;
-    private Gtk.VBox Box_shell_Right;
-    private Gtk.HBox Box_shell_date;
-    private Gtk.HBox Box_shell_seconds;
-    private Gtk.VBox Box_gtk;
-    private Gtk.HBox Box_gtk_main;
-    private Gtk.VBox Box_gtk_Left;
-    private Gtk.VBox Box_gtk_Right;
-    private Gtk.HBox HBox_restart;
-    private Gtk.HBox HBox_user;
-    private Gtk.Label common_label;
-    private Gtk.Label shell_label;
-    private Gtk.Label gtk_label;
-
-    private Gtk.Label Label_wallpaper;
-    private WallpaperChooserButton WallpaperChooser;
-    private Gtk.Label Label_icon;
+    private Gtk.Builder Builder;
+    private Gtk.Box Box_Main;
+    private ImageChooserButton Button_wallpaper;
     private Gtk.ComboBoxText ComboBox_icon;
-    private Gtk.Label Label_cursor;
     private Gtk.ComboBoxText ComboBox_cursor;
-    private Gtk.Label Label_autologin;
-    private AutologinButton BTN_autologin;
+    private AutologinButton Button_autologin;
 
-    private Gtk.Label Label_shell;
     private Gtk.ComboBoxText ComboBox_shell;
-    private Gtk.Label Label_shell_logo;
-    private WallpaperChooserButton BTN_shell_logo;
-    private Gtk.Label Label_clock_date;
+    private ImageChooserButton Button_shell_logo;
     private Gtk.Switch Switch_clock_date;
-    private Gtk.Label Label_clock_seconds;
     private Gtk.Switch Switch_clock_seconds;
 
-    private Gtk.Label Label_gtk;
     private Gtk.ComboBoxText ComboBox_gtk;
-    private Gtk.Label Label_font;
-    private Gtk.FontButton FontButton;
-    private Gtk.Label Label_logo_icon;
+    private Gtk.FontButton Button_font;
     private Gtk.Entry Entry_logo_icon;
     private Gtk.CheckButton CheckButton_banner;
     private Gtk.Entry Entry_banner_text;
@@ -369,7 +340,13 @@ class MainWindow : Gtk.Window {
     private bool AUTOLOGIN_TIMED=false;
     private int AUTOLOGIN_TIME=30;
 
-    public MainWindow() {
+    construct {
+
+        //register ImageChooserButton
+        stdout.printf("%s\n", typeof (ImageChooserButton) .name ());
+        //register AutologinButton
+        stdout.printf("%s\n",typeof (AutologinButton) .name ());
+
         this.title = _("GDM3 Setup");
         this.border_width = 10;
         this.window_position = WindowPosition.CENTER;
@@ -378,119 +355,27 @@ class MainWindow : Gtk.Window {
         this.set_icon_name("preferences-desktop-theme");
         this.destroy.connect(this._close);
 
-        this.VBox_Main = new Gtk.VBox (false, 0);
-        this.add(this.VBox_Main);
-        this.notebook = new Gtk.Notebook();
-        this.VBox_Main.pack_start(this.notebook, false, false, 0);
+        this.Builder = new Gtk.Builder();
+        this.Builder.set_translation_domain("gdm3setup");
+        this.Builder.add_from_file("/usr/share/gdm3setup/ui/gdm3setup.ui");
+        this.Box_Main = (Gtk.Box) this.Builder.get_object("box_main");
+        this.add(this.Box_Main);
 
-        this.Box_common = new Gtk.VBox (false, 0);
-        this.Box_common.set_border_width(10);
-        this.common_label = new Gtk.Label(_("General"));
-        this.notebook.append_page(this.Box_common,this.common_label);
-        this.Box_common_main = new Gtk.HBox (false, 10);
-        this.Box_common.pack_start(this.Box_common_main, false, false, 0);
-        this.Box_common_Left = new Gtk.VBox (true, 0);
-        this.Box_common_main.pack_start(this.Box_common_Left, false, false, 0);
-        this.Box_common_Right = new Gtk.VBox (true, 0);
-        this.Box_common_main.pack_end(this.Box_common_Right, false, false, 0);
-
-        this.Box_shell = new Gtk.VBox (false, 0);
-        this.Box_shell.set_border_width(10);
-        this.shell_label = new Gtk.Label("GnomeShell");
-        this.notebook.append_page(this.Box_shell,this.shell_label);
-        this.Box_shell_main = new Gtk.HBox (false, 0);
-        this.Box_shell.pack_start(this.Box_shell_main, false, false, 0);
-        this.Box_shell_Left = new Gtk.VBox (true, 0);
-        this.Box_shell_main.pack_start(this.Box_shell_Left, false, false, 0);
-        this.Box_shell_Right = new Gtk.VBox (true, 0);
-        this.Box_shell_main.pack_end(this.Box_shell_Right, false, false, 0);
-        this.Box_shell_date = new Gtk.HBox (false, 0);
-        this.Box_shell.pack_start(this.Box_shell_date, false, false, 5);
-        this.Box_shell_seconds = new Gtk.HBox (false, 0);
-        this.Box_shell.pack_start(this.Box_shell_seconds, false, false, 5);
-
-        this.Box_gtk = new Gtk.VBox(false, 0);
-        this.Box_gtk.set_border_width(10);
-        this.gtk_label = new Gtk.Label("GTK");
-        this.notebook.append_page(this.Box_gtk,this.gtk_label);
-        this.Box_gtk_main = new Gtk.HBox(false, 0);
-        this.Box_gtk.pack_start(this.Box_gtk_main, false, false, 0);
-        this.Box_gtk_Left = new Gtk.VBox(true, 0);
-        this.Box_gtk_main.pack_start(this.Box_gtk_Left, false, false, 0);
-        this.Box_gtk_Right = new Gtk.VBox(true, 0);
-        this.Box_gtk_main.pack_end(this.Box_gtk_Right, false, false, 0);
-
-        this.Label_wallpaper = new Gtk.Label(_("Wallpaper"));
-        this.Label_wallpaper.set_alignment(0,0.5f);
-        this.Box_common_Left.pack_start(this.Label_wallpaper, false, false, 0);
-        this.WallpaperChooser = new WallpaperChooserButton();
-        this.Box_common_Right.pack_start(this.WallpaperChooser, false, false, 0);
-        this.Label_icon = new Gtk.Label(_("Icon theme"));
-        this.Label_icon.set_alignment(0,0.5f);
-        this.Box_common_Left.pack_start(this.Label_icon, false, false, 0);
-        this.ComboBox_icon = new Gtk.ComboBoxText();
-        this.Box_common_Right.pack_start(this.ComboBox_icon, false, false, 0);
-        this.Label_cursor = new Gtk.Label(_("Cursor theme"));
-        this.Label_cursor.set_alignment(0,0.5f);
-        this.Box_common_Left.pack_start(this.Label_cursor, false, false, 0);
-        this.ComboBox_cursor = new Gtk.ComboBoxText();
-        this.Box_common_Right.pack_start(this.ComboBox_cursor, false, false, 0);
-        this.Label_autologin = new Gtk.Label(_("AutoLogin"));
-        this.Label_autologin.set_alignment(0,0.5f);
-        this.Box_common_Left.pack_start(this.Label_autologin, false, false, 0);
-        this.BTN_autologin = new AutologinButton(this);
-        this.Box_common_Right.pack_start(this.BTN_autologin, false, false, 0);
-
-        this.Label_shell = new Gtk.Label(_("Shell theme"));
-        this.Label_shell.set_alignment(0,0.5f);
-        this.Box_shell_Left.pack_start(this.Label_shell, false, false, 0);
-        this.ComboBox_shell = new Gtk.ComboBoxText();
-        this.Box_shell_Right.pack_start(this.ComboBox_shell, false, false, 0);
-        this.Label_shell_logo = new Gtk.Label(_("Shell Logo"));
-        this.Label_shell_logo.set_alignment(0,0.5f);
-        this.Box_shell_Left.pack_start(this.Label_shell_logo, false, false, 0);
-        this.BTN_shell_logo = new WallpaperChooserButton();
-        this.Box_shell_Right.pack_start(this.BTN_shell_logo, false, false, 0);
-        this.Label_clock_date = new Gtk.Label(_("Show Date in Clock"));
-        this.Label_clock_date.set_alignment(0,0.5f);
-        this.Box_shell_date.pack_start(this.Label_clock_date, false, false, 0);
-        this.Switch_clock_date = new Gtk.Switch();
-        this.Box_shell_date.pack_end(this.Switch_clock_date, false, false, 0);
-        this.Label_clock_seconds = new Gtk.Label(_("Show Seconds in Clock"));
-        this.Label_clock_seconds.set_alignment(0,0.5f);
-        this.Box_shell_seconds.pack_start(this.Label_clock_seconds, false, false, 0);
-        this.Switch_clock_seconds = new Gtk.Switch();
-        this.Box_shell_seconds.pack_end(this.Switch_clock_seconds, false, false, 0);
-
-        this.Label_gtk = new Gtk.Label(_("GTK3 theme"));
-        this.Label_gtk.set_alignment(0,0.5f);
-        this.Box_gtk_Left.pack_start(this.Label_gtk, false, false, 0);
-        this.ComboBox_gtk = new Gtk.ComboBoxText();
-        this.Box_gtk_Right.pack_start(this.ComboBox_gtk, false, false, 0);
-        this.Label_font = new Gtk.Label(_("Font"));
-        this.Label_font.set_alignment(0,0.5f);
-        this.Box_gtk_Left.pack_start(this.Label_font, false, false, 0);
-        this.FontButton = new Gtk.FontButton();
-        this.Box_gtk_Right.pack_start(this.FontButton, false, false, 0);
-        this.Label_logo_icon = new Gtk.Label(_("Logo Icon"));
-        this.Label_logo_icon.set_alignment(0,0.5f);
-        this.Box_gtk_Left.pack_start(this.Label_logo_icon, false, false, 0);
-        this.Entry_logo_icon = new Gtk.Entry();
-        this.Box_gtk_Right.pack_start(this.Entry_logo_icon, false, false, 0);
-        this.CheckButton_banner = new Gtk.CheckButton.with_label (_("Enable Banner"));
-        this.Box_gtk_Left.pack_start(this.CheckButton_banner, false, false, 0);
-        this.Entry_banner_text = new Gtk.Entry();
-        this.Entry_banner_text.set_sensitive(false);
-        this.Box_gtk_Right.pack_start(this.Entry_banner_text, false, false, 0);
-        this.HBox_user = new Gtk.HBox (false, 0);
-        this.Box_gtk.pack_start(this.HBox_user, false, false, 5);
-        this.CheckButton_user = new Gtk.CheckButton.with_label (_("Disable User List"));
-        this.HBox_user.pack_start(this.CheckButton_user, false, false, 0);
-        this.HBox_restart = new Gtk.HBox (false, 0);
-        this.Box_gtk.pack_start(this.HBox_restart, false, false, 5);
-        this.CheckButton_restart = new Gtk.CheckButton.with_label(_("Disable Restart Buttons"));
-        this.HBox_restart.pack_start(this.CheckButton_restart, false, false, 0);
-
+        this.Button_font = (Gtk.FontButton) this.Builder.get_object("Button_font");
+        this.Button_wallpaper = (ImageChooserButton) this.Builder.get_object("Button_wallpaper");
+        this.ComboBox_shell = (Gtk.ComboBoxText) this.Builder.get_object("ComboBox_shell");
+        this.ComboBox_icon = (Gtk.ComboBoxText) this.Builder.get_object("ComboBox_icon");
+        this.ComboBox_cursor = (Gtk.ComboBoxText) this.Builder.get_object("ComboBox_cursor");
+        this.Entry_logo_icon = (Gtk.Entry) this.Builder.get_object("Entry_logo_icon");
+        this.Button_shell_logo = (ImageChooserButton) this.Builder.get_object("Button_shell_logo");
+        this.ComboBox_gtk = (Gtk.ComboBoxText) this.Builder.get_object("ComboBox_gtk");
+        this.CheckButton_banner = (Gtk.CheckButton) this.Builder.get_object("CheckButton_banner");
+        this.Entry_banner_text = (Gtk.Entry) this.Builder.get_object("Entry_banner_text");
+        this.CheckButton_user = (Gtk.CheckButton) this.Builder.get_object("CheckButton_user");
+        this.CheckButton_restart = (Gtk.CheckButton) this.Builder.get_object("CheckButton_restart");
+        this.Button_autologin = (AutologinButton) this.Builder.get_object("Button_autologin");
+        this.Switch_clock_date = (Gtk.Switch) this.Builder.get_object("Switch_clock_date");
+        this.Switch_clock_seconds = (Gtk.Switch) this.Builder.get_object("Switch_clock_seconds");
 
         this.proxy = Bus.get_proxy_sync (BusType.SYSTEM,"apps.nano77.gdm3setup","/apps/nano77/gdm3setup");
 
@@ -502,19 +387,29 @@ class MainWindow : Gtk.Window {
 
         this.ComboBox_gtk.changed.connect(this.gtk3_theme_changed);
         this.ComboBox_shell.changed.connect(this.shell_theme_changed);
-        this.FontButton.font_set.connect(this.font_set);
+        this.Button_font.font_set.connect(this.font_set);
         this.ComboBox_icon.changed.connect(this.icon_theme_changed);
         this.ComboBox_cursor.changed.connect(this.cursor_theme_changed);
         this.Entry_logo_icon.changed.connect(this.logo_icon_changed);
-        this.BTN_shell_logo.file_changed.connect(this.shell_logo_changed);
-        this.WallpaperChooser.file_changed.connect(this.wallpaper_filechanged);
+        this.Button_shell_logo.file_changed.connect(this.shell_logo_changed);
+        this.Button_wallpaper.file_changed.connect(this.wallpaper_filechanged);
         this.CheckButton_banner.toggled.connect(this.banner_toggled);
         this.Entry_banner_text.changed.connect(this.banner_text_changed);
         this.CheckButton_user.toggled.connect(this.user_list_toggled);
         this.CheckButton_restart.toggled.connect(this.menu_btn_toggled);
-        this.BTN_autologin.changed.connect(this.autologin_changed);
+        this.Button_autologin.changed.connect(this.autologin_changed);
         this.Switch_clock_date.notify["active"].connect(this.clock_date_toggled);
         this.Switch_clock_seconds.notify["active"].connect(this.clock_seconds_toggled);
+
+        //https://bugzilla.gnome.org/show_bug.cgi?id=653579
+        this.ComboBox_icon.set_entry_text_column(0);
+        this.ComboBox_icon.set_id_column(1);
+        this.ComboBox_cursor.set_entry_text_column(0);
+        this.ComboBox_cursor.set_id_column(1);
+        this.ComboBox_shell.set_entry_text_column(0);
+        this.ComboBox_shell.set_id_column(1);
+        this.ComboBox_gtk.set_entry_text_column(0);
+        this.ComboBox_gtk.set_id_column(1);
 
     }
 
@@ -564,7 +459,6 @@ class MainWindow : Gtk.Window {
             this.proxy.StopDaemon();
         }
         catch {
-            stderr.printf("");
         }
         Gtk.main_quit();
     }
@@ -598,12 +492,12 @@ class MainWindow : Gtk.Window {
         this.CLOCK_SECONDS = str_to_bool(get_setting("CLOCK_SECONDS",settings));
         this.ComboBox_gtk.set_active_iter(get_iter(this.ComboBox_gtk.get_model(),this.GTK3_THEME));
         this.ComboBox_shell.set_active_iter(get_iter(this.ComboBox_shell.get_model(),this.SHELL_THEME));
-        this.FontButton.set_font_name(this.FONT_NAME);
-        this.WallpaperChooser.set_filename(this.WALLPAPER);
+        this.Button_font.set_font_name(this.FONT_NAME);
+        this.Button_wallpaper.set_filename(this.WALLPAPER);
         this.ComboBox_icon.set_active_iter(get_iter(this.ComboBox_icon.get_model(),this.ICON_THEME));
         this.ComboBox_cursor.set_active_iter(get_iter(this.ComboBox_cursor.get_model(),this.CURSOR_THEME));
         this.Entry_logo_icon.set_text(this.LOGO_ICON);
-        this.BTN_shell_logo.set_filename(this.SHELL_LOGO);
+        this.Button_shell_logo.set_filename(this.SHELL_LOGO);
         this.CheckButton_banner.set_active(this.BANNER);
         this.Entry_banner_text.set_text(this.BANNER_TEXT);
         this.CheckButton_user.set_active(this.USER_LIST);
@@ -626,10 +520,10 @@ class MainWindow : Gtk.Window {
         this.AUTOLOGIN_USERNAME = Data[1];
         this.AUTOLOGIN_TIMED = str_to_bool(Data[2]);
         this.AUTOLOGIN_TIME = int.parse(Data[3]);
-        this.BTN_autologin.set_autologin(this.AUTOLOGIN_ENABLED);
-        this.BTN_autologin.set_username(this.AUTOLOGIN_USERNAME);
-        this.BTN_autologin.set_timed(this.AUTOLOGIN_TIMED);
-        this.BTN_autologin.set_time(this.AUTOLOGIN_TIME);
+        this.Button_autologin.set_autologin(this.AUTOLOGIN_ENABLED);
+        this.Button_autologin.set_username(this.AUTOLOGIN_USERNAME);
+        this.Button_autologin.set_timed(this.AUTOLOGIN_TIMED);
+        this.Button_autologin.set_time(this.AUTOLOGIN_TIME);
     }
 
     private void gtk3_theme_changed() {
@@ -657,26 +551,26 @@ class MainWindow : Gtk.Window {
     }
 
     private void font_set() {
-        string font_name = this.FontButton.get_font_name();
+        string font_name = this.Button_font.get_font_name();
         if (this.FONT_NAME != font_name) { 
             if (this.set_gdm("FONT",font_name)) {
                 this.FONT_NAME = font_name;
                 stdout.printf("Font Changed : %s\n",this.FONT_NAME);
             }
             else
-                this.FontButton.set_font_name(this.FONT_NAME);
+                this.Button_font.set_font_name(this.FONT_NAME);
         }
     }
 
     private void wallpaper_filechanged() {
-        string wallpaper = this.WallpaperChooser.get_filename();
+        string wallpaper = this.Button_wallpaper.get_filename();
         if (this.WALLPAPER != wallpaper) {
             if (this.set_gdm("WALLPAPER",wallpaper)) {
                 this.WALLPAPER = wallpaper;
                 stdout.printf("Wallpaper Changed : %s\n", this.WALLPAPER);
             }
             else
-                this.WallpaperChooser.set_filename(this.WALLPAPER);
+                this.Button_wallpaper.set_filename(this.WALLPAPER);
         }
     }
 
@@ -717,14 +611,14 @@ class MainWindow : Gtk.Window {
     }
 
     private void shell_logo_changed() {
-        string shell_logo = this.BTN_shell_logo.get_filename();
+        string shell_logo = this.Button_shell_logo.get_filename();
         if (this.SHELL_LOGO != shell_logo) {
             if (this.set_gdm("SHELL_LOGO",shell_logo)) {
                 this.SHELL_LOGO = shell_logo;
                 stdout.printf ("Shell Logo Changed : %s\n",this.SHELL_LOGO);
             }
             else
-                this.BTN_shell_logo.set_filename(this.SHELL_LOGO);
+                this.Button_shell_logo.set_filename(this.SHELL_LOGO);
         }
     }
 
@@ -781,10 +675,10 @@ class MainWindow : Gtk.Window {
     }
 
     private void autologin_changed() {
-        bool autologin_enabled = this.BTN_autologin.get_autologin();
-        string autologin_username = this.BTN_autologin.get_username();
-        bool autologin_timed = this.BTN_autologin.get_timed();
-        int autologin_time = this.BTN_autologin.get_time();
+        bool autologin_enabled = this.Button_autologin.get_autologin();
+        string autologin_username = this.Button_autologin.get_username();
+        bool autologin_timed = this.Button_autologin.get_timed();
+        int autologin_time = this.Button_autologin.get_time();
         if (this.set_autologin(autologin_enabled,autologin_username,autologin_timed,autologin_time)) {
             this.AUTOLOGIN_ENABLED = autologin_enabled;
             this.AUTOLOGIN_USERNAME = autologin_username;
@@ -792,10 +686,10 @@ class MainWindow : Gtk.Window {
             this.AUTOLOGIN_TIME = autologin_time;
         }
         else {
-            this.BTN_autologin.set_autologin(this.AUTOLOGIN_ENABLED);
-            this.BTN_autologin.set_username(this.AUTOLOGIN_USERNAME);
-            this.BTN_autologin.set_timed(this.AUTOLOGIN_TIMED);
-            this.BTN_autologin.set_time(this.AUTOLOGIN_TIME);
+            this.Button_autologin.set_autologin(this.AUTOLOGIN_ENABLED);
+            this.Button_autologin.set_username(this.AUTOLOGIN_USERNAME);
+            this.Button_autologin.set_timed(this.AUTOLOGIN_TIMED);
+            this.Button_autologin.set_time(this.AUTOLOGIN_TIME);
         }
     }
 
@@ -824,10 +718,7 @@ class MainWindow : Gtk.Window {
     }
 }
 
-
 //------------------------------------------------------
-
-
 
 string get_setting(string name,string[] data) {
     int i;
