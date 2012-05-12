@@ -1,6 +1,10 @@
 // -*- mode: vala; vala-indent-level: 4; indent-tabs-mode: nil -*-
 using Gtk;
+using Gdk;
 using GLib;
+using Gnome;
+
+const string GDM_BIN_PATH="/usr/sbin/gdm";
 
 [DBus (name = "apps.nano77.gdm3setup")]
 interface GDM3SETUP : Object {
@@ -12,32 +16,45 @@ interface GDM3SETUP : Object {
 }
 
 class ImageChooserButton : Gtk.Button {
-    private Label label;
-    private Image image;
+    private new Label label;
+    private new Image image;
     private Separator separator;
-    private HBox box;
+    private Box box;
     private string Filename;
     private FileChooserDialog fileChooserDialog;
     private FileFilter filter;
+    private Image PreviewImage;
+    private Box PreviewBox;
+    private Label Label_Size;
 
     public signal void file_changed ();
 
     construct {
-        this.box = new Gtk.HBox(false,0);
-        this.add(this.box);
         this.label = new Label(_("(None)"));
         this.image = new Gtk.Image();
         this.image.set_from_icon_name("fileopen",Gtk.IconSize.SMALL_TOOLBAR);
         this.separator = new Gtk.Separator(Gtk.Orientation.VERTICAL);
+        this.box = new Gtk.Box(Gtk.Orientation.HORIZONTAL,0);
+        this.add(this.box);
         this.box.pack_start(this.label,false,false,2);
         this.box.pack_end(this.image,false,false,2);
         this.box.pack_end(this.separator,false,false,2);
+        this.box.show_all();
         this.filter = new Gtk.FileFilter();
         this.filter.add_pixbuf_formats();
         this.filter.set_filter_name("Image");
-
+        this.PreviewImage = new Gtk.Image();
+        this.PreviewBox = new Gtk.Box(Gtk.Orientation.VERTICAL, 16);
+        this.Label_Size = new Gtk.Label("0 x 0");
+        this.PreviewBox.set_size_request(200,-1);
+        this.PreviewBox.pack_start(this.PreviewImage, false, false, 0);
+        this.PreviewImage.show();
+        this.PreviewBox.pack_start(this.Label_Size, false, false, 0);
+        this.Label_Size.show();
         this.Filename = "";
         this.clicked.connect(this._Clicked);
+        this.fileChooserDialog = null;
+
     }
 
     public string get_filename() {
@@ -53,6 +70,47 @@ class ImageChooserButton : Gtk.Button {
         this.file_changed();
     }
 
+    private void _UpdatePreview() {
+        string PreviewURI = this.fileChooserDialog.get_preview_uri();
+        File PreviewFile = this.fileChooserDialog.get_preview_file();
+        FileInfo PreviewFileInfo;
+        long mtime;
+        string ThumbnailPath;
+        Pixbuf pixbuf;
+        string PreviewWidth,PreviewHeight;
+        string mimetype;
+
+        if (PreviewURI!=null && PreviewFile !=null) {
+            if (! FileUtils.test(PreviewFile.get_path(),FileTest.IS_DIR)) {
+
+                PreviewFileInfo = PreviewFile.query_info("*",FileQueryInfoFlags.NONE,null);
+                mtime = PreviewFileInfo.get_modification_time().tv_sec;
+                mimetype = PreviewFileInfo.get_content_type();
+                DesktopThumbnailFactory ThumbnailFactory = new DesktopThumbnailFactory(DesktopThumbnailSize.NORMAL);
+                ThumbnailPath = ThumbnailFactory.lookup(PreviewURI,mtime);
+                if (ThumbnailPath != null) {
+                    pixbuf = new Pixbuf.from_file(ThumbnailPath);
+                    this.PreviewImage.set_from_pixbuf(pixbuf);
+                    this.fileChooserDialog.set_preview_widget_active(true);
+                }
+                else {
+                    pixbuf = ThumbnailFactory.generate_thumbnail(PreviewURI,mimetype);
+                    ThumbnailFactory.save_thumbnail(pixbuf,PreviewURI,mtime);
+                    this.PreviewImage.set_from_pixbuf(pixbuf);
+                    this.fileChooserDialog.set_preview_widget_active(true);
+                }
+
+                PreviewWidth = pixbuf.get_option("tEXt::Thumb::Image::Width");
+                PreviewHeight = pixbuf.get_option("tEXt::Thumb::Image::Height");
+                this.Label_Size.set_label( PreviewWidth + " x " + PreviewHeight);
+            }
+            else 
+                this.fileChooserDialog.set_preview_widget_active(false);
+        }
+        else 
+            this.fileChooserDialog.set_preview_widget_active(false);
+    }
+
     void _Clicked() {
         if (this.fileChooserDialog == null) {
             this.fileChooserDialog = new Gtk.FileChooserDialog(_("Select a File"),null,
@@ -63,9 +121,12 @@ class ImageChooserButton : Gtk.Button {
             this.fileChooserDialog.add_filter(filter);
             this.fileChooserDialog.set_filename(this.Filename);
             this.fileChooserDialog.add_shortcut_folder("/usr/share/backgrounds");
+            this.fileChooserDialog.set_preview_widget(this.PreviewBox);
+            this.fileChooserDialog.set_preview_widget_active(false);
+            this.fileChooserDialog.update_preview.connect(this._UpdatePreview);
             this.fileChooserDialog.response.connect(this.response_cb);
             this.fileChooserDialog.destroy.connect(this.dialog_destroy);
-            this.fileChooserDialog.set_transient_for((Window)this.get_toplevel());
+            this.fileChooserDialog.set_transient_for((Gtk.Window)this.get_toplevel());
         }
         this.fileChooserDialog.present();
     }
@@ -96,18 +157,18 @@ class AutoLoginDialog : Gtk.Dialog {
     private Gtk.Box content_area;
     private Gtk.Box Box;
     public Gtk.CheckButton CheckButton_AutoLogin;
-    private Gtk.HBox HBox_username;
+    private Gtk.Box Box_username;
     private Gtk.Label Label_username;
     public Gtk.Entry Entry_username;
-    private Gtk.HBox HBox_Delay ;
+    private Gtk.Box Box_Delay ;
     public Gtk.CheckButton CheckButton_Delay;
     public Gtk.SpinButton SpinButton_Delay;
 
     construct {
         this.set_resizable(false);
         this.title = _("GDM AutoLogin Setup");
-        this.add_button(Gtk.STOCK_CANCEL,Gtk.ResponseType.CANCEL);
-        this.add_button(Gtk.STOCK_OK,Gtk.ResponseType.OK);
+        this.add_button(Gtk.Stock.CANCEL,Gtk.ResponseType.CANCEL);
+        this.add_button(Gtk.Stock.OK,Gtk.ResponseType.OK);
         this.content_area = (Gtk.Box)this.get_content_area();
         this.Box = new Gtk.Box(Gtk.Orientation.VERTICAL,8);
         this.Box.set_border_width(8);
@@ -116,35 +177,35 @@ class AutoLoginDialog : Gtk.Dialog {
         this.CheckButton_AutoLogin = new Gtk.CheckButton.with_label(_("Enable Automatic Login"));
         this.CheckButton_AutoLogin.toggled.connect(this.AutoLogin_toggled);
         this.Box.pack_start(this.CheckButton_AutoLogin, false, false, 0);
-        this.HBox_username = new Gtk.HBox(false, 0);
-        this.HBox_username.set_sensitive(false);
-        this.Box.pack_start(this.HBox_username, false, false, 0);
+        this.Box_username = new Gtk.Box(Gtk.Orientation.HORIZONTAL,0);
+        this.Box_username.set_sensitive(false);
+        this.Box.pack_start(this.Box_username, false, false, 0);
         this.Label_username = new Gtk.Label(_("User Name"));
         this.Label_username.set_alignment(0,0.5f);
-        this.HBox_username.pack_start(this.Label_username, false, false, 0);
+        this.Box_username.pack_start(this.Label_username, false, false, 0);
         this.Entry_username = new Gtk.Entry();
-        this.HBox_username.pack_end(this.Entry_username, false, false, 0);
-        this.HBox_Delay = new Gtk.HBox(false, 8);
-        this.HBox_Delay.set_sensitive(false);
-        this.Box.pack_start(this.HBox_Delay, false, false, 0);
+        this.Box_username.pack_end(this.Entry_username, false, false, 0);
+        this.Box_Delay = new Gtk.Box(Gtk.Orientation.HORIZONTAL,8);
+        this.Box_Delay.set_sensitive(false);
+        this.Box.pack_start(this.Box_Delay, false, false, 0);
         this.CheckButton_Delay = new Gtk.CheckButton.with_label(_("Enable Delay before autologin"));
         this.CheckButton_Delay.toggled.connect(this.Delay_toggled);
-        this.HBox_Delay.pack_start(CheckButton_Delay, false, false, 0);
+        this.Box_Delay.pack_start(CheckButton_Delay, false, false, 0);
         this.SpinButton_Delay = new Gtk.SpinButton.with_range(1,60,1);
         this.SpinButton_Delay.set_value(10);
         this.SpinButton_Delay.set_sensitive(false);
-        this.HBox_Delay.pack_end(SpinButton_Delay, false, false, 0);
+        this.Box_Delay.pack_end(SpinButton_Delay, false, false, 0);
         this.show_all();
     }
 
     void AutoLogin_toggled() {
         if (this.CheckButton_AutoLogin.get_active()) {
-            this.HBox_username.set_sensitive(true);
-            this.HBox_Delay.set_sensitive(true);
+            this.Box_username.set_sensitive(true);
+            this.Box_Delay.set_sensitive(true);
         }
         else {
-            this.HBox_username.set_sensitive(false);
-            this.HBox_Delay.set_sensitive(false);
+            this.Box_username.set_sensitive(false);
+            this.Box_Delay.set_sensitive(false);
         }
     }
 
@@ -154,7 +215,6 @@ class AutoLoginDialog : Gtk.Dialog {
         else
             SpinButton_Delay.set_sensitive(false);
     }
-
 }
 
 
@@ -163,7 +223,7 @@ class AutologinButton : Gtk.Button {
     private string username;
     private bool timed;
     private int time;
-    private Gtk.HBox box;
+    private Gtk.Box box;
     private Gtk.Label label_state;
     private Gtk.Label label_user;
     private Gtk.Separator separator;
@@ -177,8 +237,9 @@ class AutologinButton : Gtk.Button {
         this.username="";
         this.timed=false;
         this.time=30;
-        this.box= new Gtk.HBox(false,0);
+        this.box= new Gtk.Box(Gtk.Orientation.HORIZONTAL,0);
         this.add(this.box);
+        this.box.show();
         this.label_state = new Gtk.Label(_("Disabled"));
         this.label_state.set_no_show_all(true);
         this.label_state.show();
@@ -298,24 +359,119 @@ class AutologinButton : Gtk.Button {
 
 }
 
+
+class EditButton : Gtk.HBox {
+    private Gtk.Button Button;
+    private Gtk.Entry Entry;
+    public signal void changed();
+
+    construct {
+        this.Button = new Gtk.Button.with_label("text");
+        this.Button.clicked.connect(this.set_state_active);
+        this.add(this.Button);
+        this.Button.show();
+        this.Entry = new Gtk.Entry();
+        this.Entry.key_press_event.connect(this.key_press);
+        this.Entry.button_press_event.connect(this.button_press);
+        this.Entry.focus_in_event.connect(this.focus_in);
+        this.update_size();
+    }
+
+    private void update_size() {
+        int entry_minimum_width;
+        int entry_natural_width;
+        int entry_minimum_height;
+        int entry_natural_height;
+        int button_minimum_width;
+        int button_natural_width;
+        int preferred_width;
+
+        this.Entry.get_preferred_width(out entry_minimum_width,out entry_natural_width);
+        this.Entry.get_preferred_height(out entry_minimum_height,out entry_natural_height);
+        this.Button.get_preferred_width(out button_minimum_width,out button_natural_width);
+
+        if ( entry_minimum_width >= button_minimum_width )
+            preferred_width = entry_minimum_width;
+        else
+            preferred_width = button_minimum_width;
+        this.set_size_request(preferred_width,entry_minimum_height);
+    }
+
+    private void set_state_active(Gtk.Button button) {
+        this.Entry.set_text(this.Button.get_label());
+        this.remove(this.Button);
+        this.add(this.Entry);
+        this.Entry.show();
+        this.Entry.grab_focus();
+    }
+
+    private void set_state_inactive() {
+        this.Entry.focus_out_event.disconnect(this.focus_out);
+        this.remove(this.Entry);
+        this.add(this.Button);
+    }
+
+    private bool key_press(Gdk.EventKey event) {
+        string k = Gdk.keyval_name(event.keyval);
+        if (k == "Return" || k == "KP_Enter" ) {
+            this.Button.set_label(this.Entry.get_text());
+            this.set_state_inactive();
+            this.Button.grab_focus();
+            this.update_size();
+            this.changed();
+        }
+        if (k == "Escape") {
+            this.set_state_inactive();
+            this.Button.grab_focus();
+        }
+        return false;
+    }
+
+    private bool button_press(Gdk.EventButton event) {
+        uint b = event.button;
+        if (b == 3)
+            this.Entry.focus_out_event.disconnect(this.focus_out);
+        return false;
+    }
+
+    private bool focus_out(Gtk.Widget w,Gdk.EventFocus e) {
+        this.set_state_inactive();
+        return false;
+    }
+
+    private bool focus_in(Gtk.Widget w,Gdk.EventFocus e) {
+        this.Entry.focus_out_event.connect(this.focus_out);
+        return false;
+    }
+
+    public string get_text() {
+        return this.Button.get_label();
+    }
+
+    public void set_text(string text) {
+        this.Button.set_label(text);
+        this.update_size();
+    }
+}
+
 class MainWindow : Gtk.Window {
     private Gtk.Builder Builder;
     private Gtk.Box Box_Main;
+
     private ImageChooserButton Button_wallpaper;
     private Gtk.ComboBoxText ComboBox_icon;
     private Gtk.ComboBoxText ComboBox_cursor;
     private AutologinButton Button_autologin;
-
     private Gtk.ComboBoxText ComboBox_shell;
+    private ImageChooserButton Button_fallback_logo;
     private ImageChooserButton Button_shell_logo;
     private Gtk.Switch Switch_clock_date;
     private Gtk.Switch Switch_clock_seconds;
-
     private Gtk.ComboBoxText ComboBox_gtk;
     private Gtk.FontButton Button_font;
-    private Gtk.Entry Entry_logo_icon;
+    private EditButton Entry_logo_icon;
     private Gtk.CheckButton CheckButton_banner;
-    private Gtk.Entry Entry_banner_text;
+    private EditButton Entry_banner_text;
     private Gtk.CheckButton CheckButton_user;
     private Gtk.CheckButton CheckButton_restart;
 
@@ -327,6 +483,7 @@ class MainWindow : Gtk.Window {
     private string WALLPAPER = "";
     private string SHELL_THEME = "";
     private string LOGO_ICON = "";
+    private string FALLBACK_LOGO = "";
     private string SHELL_LOGO = "";
     private bool USER_LIST = false;
     private bool MENU_BTN = false;
@@ -346,6 +503,8 @@ class MainWindow : Gtk.Window {
         stdout.printf("%s\n", typeof (ImageChooserButton) .name ());
         //register AutologinButton
         stdout.printf("%s\n",typeof (AutologinButton) .name ());
+        //register EditButton
+        stdout.printf("%s\n",typeof (EditButton) .name ());
 
         this.title = _("GDM3 Setup");
         this.border_width = 10;
@@ -366,11 +525,12 @@ class MainWindow : Gtk.Window {
         this.ComboBox_shell = (Gtk.ComboBoxText) this.Builder.get_object("ComboBox_shell");
         this.ComboBox_icon = (Gtk.ComboBoxText) this.Builder.get_object("ComboBox_icon");
         this.ComboBox_cursor = (Gtk.ComboBoxText) this.Builder.get_object("ComboBox_cursor");
-        this.Entry_logo_icon = (Gtk.Entry) this.Builder.get_object("Entry_logo_icon");
+        this.Entry_logo_icon = (EditButton) this.Builder.get_object("Entry_logo_icon");
+        this.Button_fallback_logo = (ImageChooserButton) this.Builder.get_object("Button_fallback_logo");
         this.Button_shell_logo = (ImageChooserButton) this.Builder.get_object("Button_shell_logo");
         this.ComboBox_gtk = (Gtk.ComboBoxText) this.Builder.get_object("ComboBox_gtk");
         this.CheckButton_banner = (Gtk.CheckButton) this.Builder.get_object("CheckButton_banner");
-        this.Entry_banner_text = (Gtk.Entry) this.Builder.get_object("Entry_banner_text");
+        this.Entry_banner_text = (EditButton) this.Builder.get_object("Entry_banner_text");
         this.CheckButton_user = (Gtk.CheckButton) this.Builder.get_object("CheckButton_user");
         this.CheckButton_restart = (Gtk.CheckButton) this.Builder.get_object("CheckButton_restart");
         this.Button_autologin = (AutologinButton) this.Builder.get_object("Button_autologin");
@@ -391,6 +551,7 @@ class MainWindow : Gtk.Window {
         this.ComboBox_icon.changed.connect(this.icon_theme_changed);
         this.ComboBox_cursor.changed.connect(this.cursor_theme_changed);
         this.Entry_logo_icon.changed.connect(this.logo_icon_changed);
+        this.Button_fallback_logo.file_changed.connect(this.fallback_logo_filechanged);
         this.Button_shell_logo.file_changed.connect(this.shell_logo_changed);
         this.Button_wallpaper.file_changed.connect(this.wallpaper_filechanged);
         this.CheckButton_banner.toggled.connect(this.banner_toggled);
@@ -400,6 +561,7 @@ class MainWindow : Gtk.Window {
         this.Button_autologin.changed.connect(this.autologin_changed);
         this.Switch_clock_date.notify["active"].connect(this.clock_date_toggled);
         this.Switch_clock_seconds.notify["active"].connect(this.clock_seconds_toggled);
+        this.AdaptVersion();
 
         //https://bugzilla.gnome.org/show_bug.cgi?id=653579
         this.ComboBox_icon.set_entry_text_column(0);
@@ -483,11 +645,12 @@ class MainWindow : Gtk.Window {
         else
             this.WALLPAPER = "";
         this.LOGO_ICON = get_setting("LOGO_ICON",settings);
+        this.FALLBACK_LOGO = unquote(get_setting("FALLBACK_LOGO",settings));
         this.SHELL_LOGO = unquote(get_setting("SHELL_LOGO",settings));
         this.USER_LIST = bool.parse(get_setting("USER_LIST",settings));
         this.MENU_BTN = bool.parse( get_setting("BTN" ,settings));
         this.BANNER = bool.parse(get_setting("BANNER",settings));
-        this.BANNER_TEXT = get_setting("BANNER_TEXT",settings);
+        this.BANNER_TEXT = unquote(get_setting("BANNER_TEXT",settings));
         this.CLOCK_DATE = str_to_bool(get_setting("CLOCK_DATE",settings));
         this.CLOCK_SECONDS = str_to_bool(get_setting("CLOCK_SECONDS",settings));
         this.ComboBox_gtk.set_active_iter(get_iter(this.ComboBox_gtk.get_model(),this.GTK3_THEME));
@@ -497,6 +660,7 @@ class MainWindow : Gtk.Window {
         this.ComboBox_icon.set_active_iter(get_iter(this.ComboBox_icon.get_model(),this.ICON_THEME));
         this.ComboBox_cursor.set_active_iter(get_iter(this.ComboBox_cursor.get_model(),this.CURSOR_THEME));
         this.Entry_logo_icon.set_text(this.LOGO_ICON);
+        this.Button_fallback_logo.set_filename(this.FALLBACK_LOGO);
         this.Button_shell_logo.set_filename(this.SHELL_LOGO);
         this.CheckButton_banner.set_active(this.BANNER);
         this.Entry_banner_text.set_text(this.BANNER_TEXT);
@@ -505,6 +669,31 @@ class MainWindow : Gtk.Window {
         this.Entry_banner_text.set_sensitive(this.BANNER);
         this.Switch_clock_date.set_active(this.CLOCK_DATE);
         this.Switch_clock_seconds.set_active(this.CLOCK_SECONDS);
+    }
+
+    private void  AdaptVersion() { 
+        string output;
+        bool GSexists;
+        int GdmSubVersion;
+
+        Process.spawn_command_line_sync(GDM_BIN_PATH+" --version",out output,null,null);
+        GdmSubVersion = int.parse(output.split(" ",0)[1].split(".",0)[1]);
+        GSexists = FileUtils.test("/usr/bin/gnome-shell",FileTest.EXISTS);
+
+        if ( GdmSubVersion >= 3 ) {
+            this.Entry_logo_icon.hide();
+            ((Gtk.Label)this.Builder.get_object("Label_logo_icon")).hide();
+            this.Button_fallback_logo.show();
+            ((Gtk.Label)this.Builder.get_object("Label_fallback_logo")).show();
+        }
+        else {
+            this.Entry_logo_icon.show();
+            ((Gtk.Label)this.Builder.get_object("Label_logo_icon")).show();
+            this.Button_fallback_logo.hide();
+            ((Gtk.Label)this.Builder.get_object("Label_fallback_logo")).hide();
+        }
+        if ( ! GSexists || GdmSubVersion == 0 )
+            ((Gtk.Notebook)this.Builder.get_object("notebook1")).remove_page(1);
     }
 
     private bool set_autologin(bool autologin,string username,bool timed,int time) {
@@ -607,6 +796,19 @@ class MainWindow : Gtk.Window {
             }
             else
                 this.Entry_logo_icon.set_text(this.LOGO_ICON);
+        }
+    }
+
+    private void  fallback_logo_filechanged() {
+        string fallback_logo = this.Button_fallback_logo.get_filename();
+        if (this.FALLBACK_LOGO != fallback_logo) {
+            if (this.set_gdm("FALLBACK_LOGO",fallback_logo)) {
+                this.FALLBACK_LOGO = fallback_logo;
+                stdout.printf ("Fallback Logo Changed : %s\n",this.SHELL_LOGO);
+            }
+            else {
+                this.Button_fallback_logo.set_filename(this.FALLBACK_LOGO);
+            }
         }
     }
 
@@ -737,11 +939,11 @@ string get_setting(string name,string[] data) {
 
 string  unquote(string value) {
     string val;
-	if ( value[0:1] == "'"  && value[value.length-1:value.length] == "'")
-		val = value[1:value.length-1];
+    if ( value[0:1] == "'"  && value[value.length-1:value.length] == "'")
+        val = value[1:value.length-1];
     else
         val = value;
-	return val;
+    return val;
 }
 
 bool str_to_bool(string state) {
@@ -778,7 +980,7 @@ int main (string[] args) {
     Gtk.init (ref args);
 
     MainWindow window = new MainWindow();
-    window.show_all ();
+    window.show ();
 
     Gtk.main ();
     return 0;
